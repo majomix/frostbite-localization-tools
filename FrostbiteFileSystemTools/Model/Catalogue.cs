@@ -56,5 +56,6 @@ namespace FrostbiteFileSystemTools.Model
         public int Extra { get; set; }
         public Catalogue Parent { get; set; }
         public string ResolvedName { get; set; }
+        public bool Changed { get; set; }
     }
 }

@@ -22,29 +22,136 @@ namespace FrostbiteFileSystemTools.Model
             string fifaTextsPath = @"H:\Origin\FIFA 17 DEMO\Data\Win32\loc\en.toc";
             string nfsTextPath = @"H:\Origin\Need for Speed\Update\Patch\Data\Win32\loc\en.toc";
             string nfsFontsPath = @"H:\Origin\Need for Speed\Data\Win32\ui.toc";
+            string swbf2TextPatchPath = @"H:\Origin\STAR WARS Battlefront II\Patch\Win32\loc\en.toc";
+            string swbf2TextPath = @"H:\Origin\STAR WARS Battlefront II\Data\Win32\loc\en.toc";
+            string swbf2uiPath = @"H:\Origin\STAR WARS Battlefront II\Data\Win32\ui.toc";
 
-            using (FileStream fileStream = File.Open(rivalsTextPath, FileMode.Open))
+            using (FileStream fileStream = File.Open(swbf2TextPatchPath, FileMode.Open))
             {
                 BundleBinaryReader reader = new BundleBinaryReader(fileStream);
                 LoadStructureFromToc(reader, fileStream.Name);
                 //ExtractFiles(fileStream.Name);
                 ImportFiles(fileStream.Name);
             }
+        }
 
+        private void ResolveNewFiles(string tableOfContentsName, string directory)
+        {
+            FileInfo[] files = new DirectoryInfo(directory).GetFiles("*", SearchOption.AllDirectories);
+            foreach (FileInfo file in files)
+            {
+                string[] pathLayers = Regex.Split(file.FullName.Substring(directory.Length), "(bundles)|(chunks)|(ebx)|(res)|(chunkMeta)|(dbx)|\\\\").Where(_ => !String.IsNullOrEmpty(_)).ToArray();
 
+                BundleList bundleList = myTableOfContents.Payload.BundleCollections.SingleOrDefault(_ => _.Name == pathLayers[0]);
+                if (bundleList != null)
+                {
+                    SuperBundle correspondingBundle = bundleList.Bundles.SingleOrDefault(bundle => ((byte[])bundle.Properties["id"].Value).SequenceEqual(StringToByteArrayFastest(pathLayers[1])));
+                    if (correspondingBundle != null)
+                    {
+                        correspondingBundle.Changed = file.FullName;
+                    }
+                }
+            }
         }
 
         private void ImportFiles(string tableOfContentsName)
         {
             string directory = Path.GetDirectoryName(tableOfContentsName) + @"\" + Path.GetFileNameWithoutExtension(tableOfContentsName);
-            string[] files = Directory.GetFiles(directory);
-            foreach(string file in files)
-            {
-                string pattern = "(<)|(>)|(!)|(,)|(\\(#PCDATA\\))|(\\()|(\\))|(\")|(\\?)|(\\*)|(\\|)| ";
+            Random generator = new Random();
 
-                // split line via delimeter
-                //string[] substrings = Regex.Split(s, pattern);
-                //file.Split()
+            ResolveNewFiles(tableOfContentsName, directory);
+
+            bool isIndirect = myTableOfContents.Payload.BundleCollections.Where(bundleList => bundleList.Bundles.Count() > 0).First().Bundles.First().Indirection != null;
+            
+            List<bool> isIndirectionConsistentAndMatching = myTableOfContents.Payload.BundleCollections.Select(bundleList => bundleList.Bundles.All(bundle => (bundle.Indirection != null) == isIndirect)).Distinct().ToList();
+            if (isIndirectionConsistentAndMatching.Count() != 1 || !isIndirectionConsistentAndMatching.First())
+            {
+                throw new ArgumentException("Mixed indirection bundles are not supported.");
+            }
+
+            string originalSuperBundlePath = Path.ChangeExtension(tableOfContentsName, "sb");
+            string newSuperBundlePath = Path.ChangeExtension(tableOfContentsName, "sb_" + generator.Next().ToString());
+
+            // overwrite files in superbundles
+            if (!isIndirect)
+            {
+                // table of contents pointing directly to raw files in superbundles
+                if(!myTableOfContents.Payload.Properties.ContainsKey("cas"))
+                {
+                    var allBundles = myTableOfContents.Payload.BundleCollections.SelectMany(bundleList => bundleList.Bundles).OrderBy(superBundle => (long)superBundle.Properties["offset"].Value);
+
+                    using (BinaryReader originalReader = new BinaryReader(File.Open(originalSuperBundlePath, FileMode.Open)))
+                    {
+                        using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(newSuperBundlePath, FileMode.Create)))
+                        {
+                            foreach (SuperBundle superBundle in allBundles)
+                            {
+                                Int64 initialFilePosition = writer.BaseStream.Position;
+
+                                if (superBundle.Changed == null)
+                                {
+                                    long offset = (long)superBundle.Properties["offset"].Value;
+                                    originalReader.BaseStream.Seek(offset, SeekOrigin.Begin);
+                                    writer.Write(originalReader.ReadBytes((int)superBundle.Properties["size"].Value));
+                                }
+                                else
+                                {
+                                    superBundle.Properties["size"].Value = ChunkHandler.Chunk(writer, superBundle);
+                                }
+                                superBundle.Properties["offset"].Value = initialFilePosition;
+                            }
+                        }
+                    }
+                }
+                // table of contents pointing directly to raw files in catalogues
+                else
+                {
+                    var modifiedBundles = myTableOfContents.Payload.BundleCollections.SelectMany(bundleList => bundleList.Bundles).Where(bundle => bundle.Changed != null);
+
+                    foreach (SuperBundle superBundle in modifiedBundles)
+                    {
+                        CatalogueEntry catEntry = FindCorrespondingCatalogueEntry((byte[])superBundle.Properties["sha1"].Value);
+                        catEntry.Changed = true;
+
+                        string pathToNewCascade = Path.GetDirectoryName(catEntry.Parent.Path) + @"\\" + "cas_99.cas";
+                        catEntry.Archive = 99;
+
+                        using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(pathToNewCascade, FileMode.Append)))
+                        {
+                            catEntry.Offset = (int)writer.BaseStream.Position;
+                            int fileSize = ChunkHandler.Chunk(writer, superBundle);
+                            catEntry.Size = fileSize;
+
+                            if(superBundle.Properties.ContainsKey("size"))
+                            {
+                                superBundle.Properties["size"].Value = fileSize;
+                            }
+                        }
+                    }
+
+                    foreach(Catalogue catalogue in myCatalogues.Where(_ => _.Files.Values.Any(entry => entry.Changed)))
+                    {
+                        using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(catalogue.Path + "_tmp", FileMode.Create)))
+                        {
+                            writer.Write(catalogue);
+                        }
+                    }
+                }
+
+            }
+            // write catalogues
+            else
+            {
+                
+            }
+
+            // write table of contents OK
+            string randomName = Path.ChangeExtension(tableOfContentsName, @".toc_" + generator.Next().ToString());
+
+            using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(randomName, FileMode.Create)))
+            {
+                writer.Write(myTableOfContents.Header);
+                writer.Write(myTableOfContents.Payload);
             }
         }
 
@@ -75,15 +182,14 @@ namespace FrostbiteFileSystemTools.Model
                     }
                 }
 
-                string directory = Path.GetDirectoryName(tableOfContentsName) + string.Concat(Enumerable.Repeat(@"\..", 4));
+                string directory = Path.GetDirectoryName(tableOfContentsName) + string.Concat(Enumerable.Repeat(@"\..", 2));
                 FileInfo[] catalogueFiles = new DirectoryInfo(directory).GetFiles("*.cat", SearchOption.AllDirectories);
 
                 List<Catalogue> currentCatalogues = new List<Catalogue>();
                 foreach (var file in catalogueFiles)
                 {
-                    using (FileStream inputFileStream = File.Open(file.FullName, FileMode.Open))
+                    using (BundleBinaryReader catReader = new BundleBinaryReader(File.Open(file.FullName, FileMode.Open)))
                     {
-                        BundleBinaryReader catReader = new BundleBinaryReader(inputFileStream);
                         currentCatalogues.Add(catReader.ReadCatalogue(myTableOfContents.Header.Version, file.FullName));
                     }
                 }
@@ -95,19 +201,18 @@ namespace FrostbiteFileSystemTools.Model
         {
             string superBundlePath = Path.ChangeExtension(tableOfContentsName, "sb");
             string directory = Path.GetDirectoryName(tableOfContentsName) + @"\" + Path.GetFileNameWithoutExtension(tableOfContentsName);
-            StringBuilder decompressBatBuilder = new StringBuilder();
-            StringBuilder compressBatBuilder = new StringBuilder();
 
             // extract raw files from superbundles
             if (!myTableOfContents.Payload.Properties.ContainsKey("cas"))
             {
                 foreach (var collection in myTableOfContents.Payload.BundleCollections)
                 {
+                    string collectionDirectory = directory + @"\" + collection.Name + @"\";
                     foreach (var item in collection.Bundles)
                     {
                         if (item.Properties.ContainsKey("offset") && item.Properties.ContainsKey("size"))
                         {
-                            Directory.CreateDirectory(directory);
+                            Directory.CreateDirectory(collectionDirectory);
 
                             using (FileStream inputFileStream = File.Open(superBundlePath, FileMode.Open))
                             {
@@ -116,16 +221,9 @@ namespace FrostbiteFileSystemTools.Model
                                 long a = (long)item.Properties["offset"].Value;
                                 reader.BaseStream.Seek((int)a, SeekOrigin.Begin);
 
-                                string finalName = directory + @"\" + ByteArrayToString((byte[])item.Properties["id"].Value);
-                                decompressBatBuilder.AppendLine(BuildDecompressionLine(finalName));
-                                compressBatBuilder.AppendLine(BuildCompressionLine(finalName));
-                                using (FileStream outputFileStream = File.Open(finalName, FileMode.Create))
-                                {
-                                    using (BinaryWriter writer = new BinaryWriter(outputFileStream))
-                                    {
-                                        writer.Write(reader.ReadBytes((int)item.Properties["size"].Value));
-                                    }
-                                }
+                                string finalName = collectionDirectory + ByteArrayToString((byte[])item.Properties["id"].Value);
+
+                                ChunkHandler.Dechunk(finalName, reader, (int)item.Properties["size"].Value);
                             }
                         }
                     }
@@ -143,35 +241,10 @@ namespace FrostbiteFileSystemTools.Model
                         reader.BaseStream.Seek(entry.Offset, SeekOrigin.Begin);
 
                         string finalName = directory + @"\" + entry.ResolvedName.Replace(":", "");
-                        decompressBatBuilder.AppendLine(BuildDecompressionLine(finalName));
-                        compressBatBuilder.AppendLine(BuildCompressionLine(finalName));
                         Directory.CreateDirectory(finalName.Substring(0, finalName.LastIndexOf('\\')));
 
-                        using (FileStream outputFileStream = File.Open(finalName, FileMode.Create))
-                        {
-                            using (BinaryWriter writer = new BinaryWriter(outputFileStream))
-                            {
-                                writer.Write(reader.ReadBytes(entry.Size));
-                            }
-                        }
+                        ChunkHandler.Dechunk(finalName, reader, entry.Size);
                     }
-                }
-
-            }
-
-            using (FileStream batFileStream = File.Open(directory + @"\..\" + Path.GetFileNameWithoutExtension(tableOfContentsName) + @"_compress.bat", FileMode.Create))
-            {
-                using (StreamWriter writer = new StreamWriter(batFileStream))
-                {
-                    writer.Write(compressBatBuilder.ToString());
-                }
-            }
-
-            using (FileStream batFileStream = File.Open(directory + @"\..\" + Path.GetFileNameWithoutExtension(tableOfContentsName) + @"_decompress.bat", FileMode.Create))
-            {
-                using (StreamWriter writer = new StreamWriter(batFileStream))
-                {
-                    writer.Write(decompressBatBuilder.ToString());
                 }
             }
         }
@@ -241,17 +314,6 @@ namespace FrostbiteFileSystemTools.Model
         private string ByteArrayToString(byte[] byteArray)
         {
             return BitConverter.ToString(byteArray).Replace("-", string.Empty).ToLower();
-        }
-
-        private string BuildDecompressionLine(string file)
-        {
-            return "nfsrlz -d \"" + file + "\" \"" + file + ".dec\"";
-        }
-
-        private string BuildCompressionLine(string file)
-        {
-            return "nfsrlz -c \"" + file + ".dec\" \"" + file + "\"";
-            
         }
 
         private byte[] StringToByteArrayFastest(string hex)

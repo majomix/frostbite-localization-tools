@@ -2,6 +2,7 @@
 using System.IO;
 using System.Text;
 using System.Linq;
+using System;
 
 namespace FrostbiteFileSystemTools.Model
 {
@@ -12,7 +13,7 @@ namespace FrostbiteFileSystemTools.Model
 
         public override string ReadString()
         {
-            int length = (int)ReadLEB128();
+            int length = Read7BitEncodedInt();
             return new string(ReadChars(length)).TrimEnd('\0');
         }
 
@@ -27,26 +28,6 @@ namespace FrostbiteFileSystemTools.Model
             }
 
             return Encoding.ASCII.GetString(stringBytes.ToArray());
-        }
-
-        public uint ReadLEB128()
-        {
-            int offset = 0;
-            uint value = 0;
-
-            while (true)
-            {
-                byte current = ReadByte();
-                value |= (uint)(current & 0x7f) << offset;
-
-                if ((current & 0x80) == 0)
-                {
-                    break;
-                }
-                offset += 7;
-            }
-
-            return value;
         }
 
         public FrostbiteHeader ReadTableOfContentsHeader()
@@ -90,10 +71,10 @@ namespace FrostbiteFileSystemTools.Model
             }
 
             superBundle.InitialByte = currentInitialByte;
-            uint limit = ReadLEB128();
+            superBundle.Limit = Read7BitEncodedInt();
             long startPosition = BaseStream.Position;
 
-            while (BaseStream.Position < startPosition + limit)
+            while (BaseStream.Position < startPosition + superBundle.Limit)
             {
                 byte entryOpCode = ReadByte();
 
@@ -138,8 +119,8 @@ namespace FrostbiteFileSystemTools.Model
                     // variable size blob
                     case 0x02:
                     case 0x13:
-                        uint blobSize = ReadLEB128();
-                        value = ReadBytes((int)blobSize);
+                        int blobSize = Read7BitEncodedInt();
+                        value = ReadBytes(blobSize);
                         break;
                     default:
                         throw new InvalidDataException("Unknown opcode.");
@@ -162,7 +143,7 @@ namespace FrostbiteFileSystemTools.Model
                 throw new InvalidDataException("Unknown list type.");
             }
 
-            uint limit = ReadLEB128();
+            int limit = Read7BitEncodedInt();
 
             long startPosition = BaseStream.Position;
 
@@ -178,6 +159,7 @@ namespace FrostbiteFileSystemTools.Model
             BundleList bundleList = new BundleList();
             bundleList.Name = listName;
             bundleList.Bundles = listOfBundles;
+            bundleList.Limit = limit;
 
             return bundleList;
         }
@@ -201,7 +183,7 @@ namespace FrostbiteFileSystemTools.Model
                 catalogue.NumberOfHashes = ReadInt32();
 
                 byte[] extraBytes = ReadBytes(16);
-                if(extraBytes.All(_ => _ == 0x00))
+                if(extraBytes[15] == 0)
                 {
                     catalogue.Extra = extraBytes;
                 }

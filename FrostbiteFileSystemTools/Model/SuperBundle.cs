@@ -91,16 +91,22 @@ namespace FrostbiteFileSystemTools.Model
             }
         }
 
+        public int Limit { get; set; }
         public SuperBundle Indirection { get; set; }
         public IEnumerable<BundleList> BundleCollections { get; set; }
         public Dictionary<string, PropertyValue> Properties { get; set; }
-        public bool Changed { get; set; }
+        public string Changed { get; set; }
     }
 
     public class BundleList
     {
         public IEnumerable<SuperBundle> Bundles { get; set; }
+        public int Limit { get; set; }
         public string Name { get; set; }
+        public byte Opcode
+        {
+            get { return 0x01; }
+        }
     }
 
     public class PropertyValue
@@ -112,6 +118,6 @@ namespace FrostbiteFileSystemTools.Model
         }
 
         public byte Opcode { get; private set; }
-        public object Value { get; private set; }
+        public object Value { get; set; }
     }
 }
