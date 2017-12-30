@@ -40,12 +40,39 @@ namespace FrostbiteFileSystemTools.Model
             FileInfo[] files = new DirectoryInfo(directory).GetFiles("*", SearchOption.AllDirectories);
             foreach (FileInfo file in files)
             {
-                string[] pathLayers = Regex.Split(file.FullName.Substring(directory.Length), "(bundles)|(chunks)|(ebx)|(res)|(chunkMeta)|(dbx)|\\\\").Where(_ => !String.IsNullOrEmpty(_)).ToArray();
+                string[] pathLayers = Regex.Split(file.FullName.Substring(directory.Length), "(?:(bundles)|(chunks)|(ebx)|(res)|(chunkMeta)|(dbx))\\\\").Select(substring => substring.Trim('\\').Replace('\\', '/')).Where(_ => !String.IsNullOrEmpty(_)).ToArray();
 
                 BundleList bundleList = myTableOfContents.Payload.BundleCollections.SingleOrDefault(_ => _.Name == pathLayers[0]);
                 if (bundleList != null)
                 {
-                    SuperBundle correspondingBundle = bundleList.Bundles.SingleOrDefault(bundle => ((byte[])bundle.Properties["id"].Value).SequenceEqual(StringToByteArrayFastest(pathLayers[1])));
+                    SuperBundle correspondingBundle = null;
+                    // no indirection
+                    if(pathLayers.Length == 2)
+                    {
+                        correspondingBundle = bundleList.Bundles.SingleOrDefault(bundle => ((byte[])bundle.Properties["id"].Value).SequenceEqual(StringToByteArrayFastest(pathLayers[1])));
+                    }
+                    // indirection
+                    else
+                    {
+                        IEnumerable<SuperBundle> superBundles = bundleList.Bundles
+                            .Where(bundle => (string)bundle.Properties["id"].Value == pathLayers[1].Replace("_Dq_", ":"));
+
+                        if(superBundles != null)
+                        {
+                            BundleList indirectBundleList = superBundles.SelectMany(bundle => bundle.Indirection.BundleCollections
+                                    .Where(list => list.Name == pathLayers[2]))
+                                    .SingleOrDefault();
+
+                            if (indirectBundleList != null)
+                            {
+                                correspondingBundle = indirectBundleList.Bundles
+                                    .SingleOrDefault(bundle => bundle.Properties.ContainsKey("name")
+                                        ? (string)bundle.Properties["name"].Value == pathLayers[3]
+                                        : ((byte[])bundle.Properties["id"].Value).SequenceEqual(StringToByteArrayFastest(pathLayers[3])));
+                            }
+                        }
+
+                    }
                     if (correspondingBundle != null)
                     {
                         correspondingBundle.Changed = file.FullName;
@@ -240,7 +267,7 @@ namespace FrostbiteFileSystemTools.Model
                         BinaryReader reader = new BinaryReader(inputFileStream);
                         reader.BaseStream.Seek(entry.Offset, SeekOrigin.Begin);
 
-                        string finalName = directory + @"\" + entry.ResolvedName.Replace(":", "");
+                        string finalName = directory + @"\" + entry.ResolvedName.Replace(":", "_Dq_");
                         Directory.CreateDirectory(finalName.Substring(0, finalName.LastIndexOf('\\')));
 
                         ChunkHandler.Dechunk(finalName, reader, entry.Size);
