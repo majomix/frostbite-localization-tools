@@ -99,86 +99,121 @@ namespace FrostbiteFileSystemTools.Model
             string originalSuperBundlePath = Path.ChangeExtension(tableOfContentsName, "sb");
             string newSuperBundlePath = Path.ChangeExtension(tableOfContentsName, "sb_" + generator.Next().ToString());
 
-            // overwrite files in superbundles
-            if (!isIndirect)
+            // table of contents pointing directly to raw files in superbundles
+            if(!myTableOfContents.Payload.Properties.ContainsKey("cas"))
             {
-                // table of contents pointing directly to raw files in superbundles
-                if(!myTableOfContents.Payload.Properties.ContainsKey("cas"))
+                // write superbundle
+                var allBundles = myTableOfContents.Payload.BundleCollections.SelectMany(bundleList => bundleList.Bundles).OrderBy(superBundle => (long)superBundle.Properties["offset"].Value);
+
+                using (BinaryReader originalReader = new BinaryReader(File.Open(originalSuperBundlePath, FileMode.Open)))
                 {
-                    var allBundles = myTableOfContents.Payload.BundleCollections.SelectMany(bundleList => bundleList.Bundles).OrderBy(superBundle => (long)superBundle.Properties["offset"].Value);
-
-                    using (BinaryReader originalReader = new BinaryReader(File.Open(originalSuperBundlePath, FileMode.Open)))
+                    using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(newSuperBundlePath, FileMode.Create)))
                     {
-                        using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(newSuperBundlePath, FileMode.Create)))
+                        foreach (SuperBundle superBundle in allBundles)
                         {
-                            foreach (SuperBundle superBundle in allBundles)
+                            Int64 initialFilePosition = writer.BaseStream.Position;
+
+                            if (superBundle.Changed == null)
                             {
-                                Int64 initialFilePosition = writer.BaseStream.Position;
-
-                                if (superBundle.Changed == null)
-                                {
-                                    long offset = (long)superBundle.Properties["offset"].Value;
-                                    originalReader.BaseStream.Seek(offset, SeekOrigin.Begin);
-                                    writer.Write(originalReader.ReadBytes((int)superBundle.Properties["size"].Value));
-                                }
-                                else
-                                {
-                                    superBundle.Properties["size"].Value = ChunkHandler.Chunk(writer, superBundle);
-                                }
-                                superBundle.Properties["offset"].Value = initialFilePosition;
+                                long offset = (long)superBundle.Properties["offset"].Value;
+                                originalReader.BaseStream.Seek(offset, SeekOrigin.Begin);
+                                writer.Write(originalReader.ReadBytes((int)superBundle.Properties["size"].Value));
                             }
-                        }
-                    }
-                }
-                // table of contents pointing directly to raw files in catalogues
-                else
-                {
-                    var modifiedBundles = myTableOfContents.Payload.BundleCollections.SelectMany(bundleList => bundleList.Bundles).Where(bundle => bundle.Changed != null);
-
-                    foreach (SuperBundle superBundle in modifiedBundles)
-                    {
-                        CatalogueEntry catEntry = FindCorrespondingCatalogueEntry((byte[])superBundle.Properties["sha1"].Value);
-                        catEntry.Changed = true;
-
-                        string pathToNewCascade = Path.GetDirectoryName(catEntry.Parent.Path) + @"\\" + "cas_99.cas";
-                        catEntry.Archive = 99;
-
-                        using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(pathToNewCascade, FileMode.Append)))
-                        {
-                            catEntry.Offset = (int)writer.BaseStream.Position;
-                            int fileSize = ChunkHandler.Chunk(writer, superBundle);
-                            catEntry.Size = fileSize;
-
-                            if(superBundle.Properties.ContainsKey("size"))
+                            else
                             {
-                                superBundle.Properties["size"].Value = fileSize;
+                                superBundle.Properties["size"].Value = ChunkHandler.Chunk(writer, superBundle);
                             }
-                        }
-                    }
-
-                    foreach(Catalogue catalogue in myCatalogues.Where(_ => _.Files.Values.Any(entry => entry.Changed)))
-                    {
-                        using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(catalogue.Path + "_tmp", FileMode.Create)))
-                        {
-                            writer.Write(catalogue);
+                            superBundle.Properties["offset"].Value = initialFilePosition;
                         }
                     }
                 }
 
+                // write table of contents
+                string randomName = Path.ChangeExtension(tableOfContentsName, @".toc_" + generator.Next().ToString());
+
+                using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(randomName, FileMode.Create)))
+                {
+                    writer.Write(myTableOfContents.Header);
+                    writer.Write(myTableOfContents.Payload);
+                }
             }
-            // write catalogues
+            // table of contents pointing to raw files in catalogues
             else
             {
-                
-            }
+                IEnumerable<SuperBundle> modifiedBundles;
 
-            // write table of contents OK
-            string randomName = Path.ChangeExtension(tableOfContentsName, @".toc_" + generator.Next().ToString());
+                if (isIndirect)
+                {
+                    modifiedBundles = myTableOfContents.Payload.BundleCollections
+                    .SelectMany(bundleList => bundleList.Bundles
+                        .SelectMany(superBundles => superBundles.Indirection.BundleCollections
+                            .SelectMany(indirectBundleList => indirectBundleList.Bundles)))
+                            .Where(bundle => bundle.Changed != null);
+                }
+                else
+                {
+                    modifiedBundles = myTableOfContents.Payload.BundleCollections.SelectMany(bundleList => bundleList.Bundles).Where(bundle => bundle.Changed != null);
+                }
 
-            using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(randomName, FileMode.Create)))
-            {
-                writer.Write(myTableOfContents.Header);
-                writer.Write(myTableOfContents.Payload);
+                // write cas
+                foreach (SuperBundle superBundle in modifiedBundles)
+                {
+                    CatalogueEntry catEntry = FindCorrespondingCatalogueEntry((byte[])superBundle.Properties["sha1"].Value);
+                    catEntry.Changed = true;
+
+                    string pathToNewCascade = Path.GetDirectoryName(catEntry.Parent.Path) + @"\\" + "cas_99.cas";
+                    catEntry.Archive = 99;
+
+                    using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(pathToNewCascade, FileMode.Append)))
+                    {
+                        catEntry.Offset = (int)writer.BaseStream.Position;
+                        int fileSize = ChunkHandler.Chunk(writer, superBundle);
+                        catEntry.Size = fileSize;
+
+                        if (superBundle.Properties.ContainsKey("size"))
+                        {
+                            superBundle.Properties["size"].Value = (Int64)fileSize;
+                        }
+                        if(superBundle.Properties.ContainsKey("originalSize"))
+                        {
+                            superBundle.Properties["originalSize"].Value = (Int64)new FileInfo(superBundle.Changed).Length;
+                        }
+                    }
+                }
+
+                // write catalogue
+                foreach(Catalogue catalogue in myCatalogues.Where(_ => _.Files.Values.Any(entry => entry.Changed)))
+                {
+                    // fix for duplicates
+                    catalogue.NumberOfFiles = catalogue.Files.Count;
+
+                    using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(catalogue.Path + "_tmp", FileMode.Create)))
+                    {
+                        writer.Write(catalogue);
+                    }
+                }
+
+                // write superbundle
+                if(isIndirect)
+                {
+                    // write table of contents
+                    string randomName = Path.ChangeExtension(tableOfContentsName, @".sb_" + generator.Next().ToString());
+
+                    using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(randomName, FileMode.Create)))
+                    {
+                        using (BinaryReader originalReader = new BinaryReader(File.Open(originalSuperBundlePath, FileMode.Open)))
+                        {
+                            originalReader.BaseStream.Seek(0, SeekOrigin.Begin);
+                            writer.Write(originalReader.ReadBytes(16));
+                        }
+
+                        foreach (SuperBundle indirectSuperBundle in myTableOfContents.Payload.BundleCollections.SelectMany(_ => _.Bundles.Select(x => x.Indirection)))
+                        {
+                            writer.Write(indirectSuperBundle);
+                        }
+                        writer.Write((Int16)0);
+                    }
+                }
             }
         }
 
