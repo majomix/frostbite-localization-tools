@@ -58,6 +58,9 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="Model\CompressionStrategyLZ4.cs" />
+    <Compile Include="Model\CompressionStrategyZstd.cs" />
+    <Compile Include="Model\ICompressionStrategy.cs" />
     <Page Include="View\MainEditorWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -73,7 +76,6 @@
     <Compile Include="Model\Extensions.cs" />
     <Compile Include="Model\FrostbiteEditor.cs" />
     <Compile Include="Model\Helpers.cs" />
-    <Compile Include="Model\LZ4Handler.cs" />
     <Compile Include="Model\StructuralEqualityComparer.cs" />
     <Compile Include="Model\SuperBundle.cs" />
     <Compile Include="View\MainEditorWindow.xaml.cs">

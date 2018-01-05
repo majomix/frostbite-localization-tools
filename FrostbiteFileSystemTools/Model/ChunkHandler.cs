@@ -1,11 +1,12 @@
 ﻿using System;
 using System.IO;
-using ZstdNet;
 
 namespace FrostbiteFileSystemTools.Model
 {
     internal static class ChunkHandler
     {
+        public static ICompressionStrategy CompressionStrategy = new CompressionStrategyLZ4();
+
         public static Int32 Chunk(BinaryWriter writer, SuperBundle superBundle)
         {
             Int32 totalFileSize = 0;
@@ -28,14 +29,7 @@ namespace FrostbiteFileSystemTools.Model
 
                     inBuffer = changedFileReader.ReadBytes((int)uncompressedChunkSize);
 
-                    int compressedChunkSize;
-                    using(CompressionOptions options = new CompressionOptions(CompressionOptions.MaxCompressionLevel))
-                    using(Compressor compressor = new Compressor(options))
-                    {
-                        compressedChunkSize = compressor.Wrap(inBuffer, outBuffer, 0);
-                    }
-
-                    //compressedChunkSize = LZ4Handler.LZ4_compress(inBuffer, outBuffer, (int)uncompressedChunkSize);
+                    int compressedChunkSize = CompressionStrategy.Compress(inBuffer, outBuffer, (int)uncompressedChunkSize);
 
                     writer.WriteUInt32BE(uncompressedChunkSize);
                     totalFileSize += 8;
@@ -52,7 +46,7 @@ namespace FrostbiteFileSystemTools.Model
                     // store compressed
                     else
                     {
-                        writer.Write((byte)0x0F);
+                        writer.Write(CompressionStrategy.CompressionSignature);
                         writer.Write((byte)0x70);
                         writer.WriteUInt16BE((UInt16)compressedChunkSize);
                         writer.Write(outBuffer, 0, compressedChunkSize);
