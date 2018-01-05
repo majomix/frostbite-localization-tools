@@ -11,29 +11,6 @@ namespace FrostbiteFileSystemTools.Model
         private TableOfContents myTableOfContents;
         private IEnumerable<Catalogue> myCatalogues;
 
-        public FrostbiteEditor()
-        {
-            string rivalsTextPath = @"E:\Program Files\Origin Games\Need for Speed(TM) Rivals\Update\Patch\Data\Win32\Loc\en.toc";
-            string rivalsFontsPath = @"E:\Program Files\Origin Games\Need for Speed(TM) Rivals\Update\Patch\Data\Win32\UI.toc";
-            string starwarsTextPath = @"H:\Origin\STAR WARS Battlefront\Patch\Win32\loc\en.toc";
-            string starwarsFontsPath = @"H:\Origin\STAR WARS Battlefront\Patch\Win32\ui.toc";
-            string fifaTextsPath = @"H:\Origin\FIFA 17 DEMO\Data\Win32\loc\en.toc";
-            string nfsTextPath = @"H:\Origin\Need for Speed\Update\Patch\Data\Win32\loc\en.toc";
-            string nfsFontsPath = @"H:\Origin\Need for Speed\Data\Win32\ui.toc";
-            string swbf2TextPatchPath = @"H:\Origin\STAR WARS Battlefront II\Patch\Win32\loc\en.toc";
-            string swbf2TextPath = @"H:\Origin\STAR WARS Battlefront II\Data\Win32\loc\en.toc";
-            string swbf2uiPath = @"H:\Origin\STAR WARS Battlefront II\Data\Win32\ui.toc";
-            string swbf2uiPatchPath = @"H:\Origin\STAR WARS Battlefront II\Patch\Win32\ui.toc";
-
-            using (FileStream fileStream = File.Open(swbf2uiPatchPath, FileMode.Open))
-            {
-                BundleBinaryReader reader = new BundleBinaryReader(fileStream);
-                LoadStructureFromToc(reader, fileStream.Name);
-                //ExtractFiles(fileStream.Name);
-                ImportFiles(fileStream.Name);
-            }
-        }
-
         public void ResolveNewFiles(string tableOfContentsName, string directory)
         {
             FileInfo[] files = new DirectoryInfo(directory).GetFiles("*", SearchOption.AllDirectories);
@@ -103,6 +80,8 @@ namespace FrostbiteFileSystemTools.Model
             // table of contents pointing directly to raw files in superbundles
             if(!myTableOfContents.Payload.Properties.ContainsKey("cas"))
             {
+                filesToOverwriteMap.Add(originalSuperBundlePath, newSuperBundlePath);
+
                 // write superbundle
                 var allBundles = myTableOfContents.Payload.BundleCollections.SelectMany(bundleList => bundleList.Bundles).OrderBy(superBundle => (long)superBundle.Properties["offset"].Value);
 
@@ -203,6 +182,8 @@ namespace FrostbiteFileSystemTools.Model
                 // write superbundle
                 if(isIndirect)
                 {
+                    filesToOverwriteMap.Add(originalSuperBundlePath, newSuperBundlePath);
+
                     // write table of contents
                     using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(newSuperBundlePath, FileMode.Create)))
                     {
@@ -224,11 +205,15 @@ namespace FrostbiteFileSystemTools.Model
             CleanupTemporaryFiles(filesToOverwriteMap);
         }
 
-        public void LoadStructureFromToc(BundleBinaryReader bundleReader, string tableOfContentsName)
+        public void LoadStructureFromToc(string tableOfContentsName, int maximumParentDirectories)
         {
-            myTableOfContents = new TableOfContents();
-            myTableOfContents.Header = bundleReader.ReadTableOfContentsHeader();
-            myTableOfContents.Payload = bundleReader.ReadTableOfContentsPayload();
+            using (BundleBinaryReader tocReader = new BundleBinaryReader(File.Open(tableOfContentsName, FileMode.Open)))
+            {
+                myTableOfContents = new TableOfContents();
+                myTableOfContents.Header = tocReader.ReadTableOfContentsHeader();
+                myTableOfContents.Payload = tocReader.ReadTableOfContentsPayload();
+            }
+            
             string superBundlePath = Path.ChangeExtension(tableOfContentsName, "sb");
 
             if (myTableOfContents.Payload.Properties.ContainsKey("cas"))
@@ -251,7 +236,7 @@ namespace FrostbiteFileSystemTools.Model
                     }
                 }
 
-                string directory = Path.GetDirectoryName(tableOfContentsName) + string.Concat(Enumerable.Repeat(@"\..", 2));
+                string directory = Path.GetDirectoryName(tableOfContentsName) + string.Concat(Enumerable.Repeat(@"\..", maximumParentDirectories));
                 FileInfo[] catalogueFiles = new DirectoryInfo(directory).GetFiles("*.cat", SearchOption.AllDirectories);
 
                 List<Catalogue> currentCatalogues = new List<Catalogue>();

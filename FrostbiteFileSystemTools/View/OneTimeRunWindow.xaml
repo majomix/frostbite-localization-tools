@@ -1,0 +1,22 @@
+﻿<Window x:Class="FrostbiteFileSystemTools.View.OneTimeRunWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Frostbite 3 Editor" Height="250" Width="450">
+    <DockPanel>
+        <TextBlock DockPanel.Dock="Bottom" HorizontalAlignment="Center" Text="Processing game files. Please wait..." />
+        <Grid Height="50" DockPanel.Dock="Bottom">
+            <ProgressBar Value="{Binding CurrentProgress, Mode=OneWay}" />
+            <TextBlock VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding CurrentProgress, StringFormat={}{0} %}" />
+        </Grid>
+
+        <Grid x:Name="imageGrid">
+            <Grid.Background>
+                <ImageBrush>
+                    <ImageBrush.ImageSource>
+                        <BitmapImage UriSource="Frostbite.bmp" />
+                    </ImageBrush.ImageSource>
+                </ImageBrush>
+            </Grid.Background>
+        </Grid>
+    </DockPanel>
+</Window>
