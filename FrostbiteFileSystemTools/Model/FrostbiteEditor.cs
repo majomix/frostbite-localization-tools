@@ -2,9 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace FrostbiteFileSystemTools.Model
 {
@@ -25,8 +23,9 @@ namespace FrostbiteFileSystemTools.Model
             string swbf2TextPatchPath = @"H:\Origin\STAR WARS Battlefront II\Patch\Win32\loc\en.toc";
             string swbf2TextPath = @"H:\Origin\STAR WARS Battlefront II\Data\Win32\loc\en.toc";
             string swbf2uiPath = @"H:\Origin\STAR WARS Battlefront II\Data\Win32\ui.toc";
+            string swbf2uiPatchPath = @"H:\Origin\STAR WARS Battlefront II\Patch\Win32\ui.toc";
 
-            using (FileStream fileStream = File.Open(swbf2TextPatchPath, FileMode.Open))
+            using (FileStream fileStream = File.Open(swbf2uiPatchPath, FileMode.Open))
             {
                 BundleBinaryReader reader = new BundleBinaryReader(fileStream);
                 LoadStructureFromToc(reader, fileStream.Name);
@@ -35,7 +34,7 @@ namespace FrostbiteFileSystemTools.Model
             }
         }
 
-        private void ResolveNewFiles(string tableOfContentsName, string directory)
+        public void ResolveNewFiles(string tableOfContentsName, string directory)
         {
             FileInfo[] files = new DirectoryInfo(directory).GetFiles("*", SearchOption.AllDirectories);
             foreach (FileInfo file in files)
@@ -49,7 +48,7 @@ namespace FrostbiteFileSystemTools.Model
                     // no indirection
                     if(pathLayers.Length == 2)
                     {
-                        correspondingBundle = bundleList.Bundles.SingleOrDefault(bundle => ((byte[])bundle.Properties["id"].Value).SequenceEqual(StringToByteArrayFastest(pathLayers[1])));
+                        correspondingBundle = bundleList.Bundles.SingleOrDefault(bundle => ((byte[])bundle.Properties["id"].Value).SequenceEqual(Helpers.StringToByteArray(pathLayers[1])));
                     }
                     // indirection
                     else
@@ -68,7 +67,7 @@ namespace FrostbiteFileSystemTools.Model
                                 correspondingBundle = indirectBundleList.Bundles
                                     .SingleOrDefault(bundle => bundle.Properties.ContainsKey("name")
                                         ? (string)bundle.Properties["name"].Value == pathLayers[3]
-                                        : ((byte[])bundle.Properties["id"].Value).SequenceEqual(StringToByteArrayFastest(pathLayers[3])));
+                                        : ((byte[])bundle.Properties["id"].Value).SequenceEqual(Helpers.StringToByteArray(pathLayers[3])));
                             }
                         }
 
@@ -81,8 +80,10 @@ namespace FrostbiteFileSystemTools.Model
             }
         }
 
-        private void ImportFiles(string tableOfContentsName)
+        public void ImportFiles(string tableOfContentsName)
         {
+            Dictionary<string, string> filesToOverwriteMap = new Dictionary<string, string>();
+
             string directory = Path.GetDirectoryName(tableOfContentsName) + @"\" + Path.GetFileNameWithoutExtension(tableOfContentsName);
             Random generator = new Random();
 
@@ -109,6 +110,8 @@ namespace FrostbiteFileSystemTools.Model
                 {
                     using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(newSuperBundlePath, FileMode.Create)))
                     {
+                        filesToOverwriteMap.Add(originalSuperBundlePath, newSuperBundlePath);
+
                         foreach (SuperBundle superBundle in allBundles)
                         {
                             Int64 initialFilePosition = writer.BaseStream.Position;
@@ -129,9 +132,10 @@ namespace FrostbiteFileSystemTools.Model
                 }
 
                 // write table of contents
-                string randomName = Path.ChangeExtension(tableOfContentsName, @".toc_" + generator.Next().ToString());
+                string newTableOfContentsName = Path.ChangeExtension(tableOfContentsName, @".toc_" + generator.Next().ToString());
+                filesToOverwriteMap.Add(tableOfContentsName, newTableOfContentsName);
 
-                using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(randomName, FileMode.Create)))
+                using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(newTableOfContentsName, FileMode.Create)))
                 {
                     writer.Write(myTableOfContents.Header);
                     writer.Write(myTableOfContents.Payload);
@@ -187,7 +191,10 @@ namespace FrostbiteFileSystemTools.Model
                     // fix for duplicates
                     catalogue.NumberOfFiles = catalogue.Files.Count;
 
-                    using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(catalogue.Path + "_tmp", FileMode.Create)))
+                    string newCataloguePath = catalogue.Path + "_tmp" + generator.Next().ToString();
+                    filesToOverwriteMap.Add(catalogue.Path, newCataloguePath);
+
+                    using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(newCataloguePath, FileMode.Create)))
                     {
                         writer.Write(catalogue);
                     }
@@ -197,9 +204,7 @@ namespace FrostbiteFileSystemTools.Model
                 if(isIndirect)
                 {
                     // write table of contents
-                    string randomName = Path.ChangeExtension(tableOfContentsName, @".sb_" + generator.Next().ToString());
-
-                    using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(randomName, FileMode.Create)))
+                    using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(newSuperBundlePath, FileMode.Create)))
                     {
                         using (BinaryReader originalReader = new BinaryReader(File.Open(originalSuperBundlePath, FileMode.Open)))
                         {
@@ -215,6 +220,8 @@ namespace FrostbiteFileSystemTools.Model
                     }
                 }
             }
+
+            CleanupTemporaryFiles(filesToOverwriteMap);
         }
 
         public void LoadStructureFromToc(BundleBinaryReader bundleReader, string tableOfContentsName)
@@ -259,7 +266,7 @@ namespace FrostbiteFileSystemTools.Model
             }
         }
 
-        private void ExtractFiles(string tableOfContentsName)
+        public void ExtractFiles(string tableOfContentsName)
         {
             string superBundlePath = Path.ChangeExtension(tableOfContentsName, "sb");
             string directory = Path.GetDirectoryName(tableOfContentsName) + @"\" + Path.GetFileNameWithoutExtension(tableOfContentsName);
@@ -283,7 +290,7 @@ namespace FrostbiteFileSystemTools.Model
                                 long a = (long)item.Properties["offset"].Value;
                                 reader.BaseStream.Seek((int)a, SeekOrigin.Begin);
 
-                                string finalName = collectionDirectory + ByteArrayToString((byte[])item.Properties["id"].Value);
+                                string finalName = collectionDirectory + Helpers.ByteArrayToString((byte[])item.Properties["id"].Value);
 
                                 ChunkHandler.Dechunk(finalName, reader, (int)item.Properties["size"].Value);
                             }
@@ -361,7 +368,7 @@ namespace FrostbiteFileSystemTools.Model
                                 }
                                 else if (item.Properties.ContainsKey("id"))
                                 {
-                                    catalogueEntry.ResolvedName = ByteArrayToString((byte[])item.Properties["id"].Value);
+                                    catalogueEntry.ResolvedName = Helpers.ByteArrayToString((byte[])item.Properties["id"].Value);
                                 }
                                 catalogueEntry.ResolvedName = appendPrefix + @"\" + catalogueEntry.ResolvedName;
 
@@ -373,27 +380,13 @@ namespace FrostbiteFileSystemTools.Model
             }
         }
 
-        private string ByteArrayToString(byte[] byteArray)
+        private void CleanupTemporaryFiles(Dictionary<string, string> filesToOverwriteMap)
         {
-            return BitConverter.ToString(byteArray).Replace("-", string.Empty).ToLower();
-        }
-
-        private byte[] StringToByteArrayFastest(string hex)
-        {
-            byte[] arr = new byte[hex.Length >> 1];
-
-            for (int i = 0; i < hex.Length >> 1; ++i)
+            foreach (var pair in filesToOverwriteMap)
             {
-                arr[i] = (byte)((GetHexVal(hex[i << 1]) << 4) + (GetHexVal(hex[(i << 1) + 1])));
+                File.Delete(pair.Key);
+                File.Move(pair.Value, pair.Key);
             }
-
-            return arr;
-        }
-
-        private int GetHexVal(char hex)
-        {
-            int val = (int)hex;
-            return val - (val < 58 ? 48 : 87);
         }
     }
 }
