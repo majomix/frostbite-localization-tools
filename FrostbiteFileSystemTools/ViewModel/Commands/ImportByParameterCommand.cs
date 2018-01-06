@@ -1,22 +1,10 @@
-﻿using System;
-using System.ComponentModel;
-
-namespace FrostbiteFileSystemTools.ViewModel.Commands
+﻿namespace FrostbiteFileSystemTools.ViewModel.Commands
 {
-    internal class ImportByParameterCommand : AbstractWorkerCommand
+    internal class ImportByParameterCommand : AbstractParameterCommand
     {
-        private OneTimeRunViewModel myOneTimeRunViewModel;
-
-        public override void Execute(object parameter)
-        {
-            myOneTimeRunViewModel = (OneTimeRunViewModel)parameter;
-            Worker.RunWorkerAsync();
-        }
-
-        protected override void DoWork(object sender, DoWorkEventArgs e)
+        protected override void DoSpecificWork()
         {
             myOneTimeRunViewModel.Import();
-            myOneTimeRunViewModel.OnRequestClose(new EventArgs());
         }
     }
 }
