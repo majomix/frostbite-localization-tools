@@ -20,6 +20,11 @@ namespace FrostbiteFileSystemTools.Model
             Hashes = hashes;
         }
 
+        public static byte[] CasHeader
+        {
+            get { return new byte[] { 0xFA, 0xCE, 0x0F, 0xF0 }.Concat(new byte[28]).ToArray(); }
+        }
+
         public string Signature
         {
             get { return mySignature; }

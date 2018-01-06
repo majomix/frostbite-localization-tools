@@ -149,6 +149,11 @@ namespace FrostbiteFileSystemTools.Model
 
                     using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(pathToNewCascade, FileMode.Append)))
                     {
+                        if (writer.BaseStream.Position == 0 && myTableOfContents.Header.Version == 0x03)
+                        {
+                            writer.Write(Catalogue.CasHeader);
+                        }
+
                         catEntry.Offset = (int)writer.BaseStream.Position;
                         int fileSize = ChunkHandler.Chunk(writer, superBundle);
                         catEntry.Size = fileSize;
