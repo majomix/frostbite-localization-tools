@@ -48,10 +48,14 @@ namespace FrostbiteFileSystemTools.ViewModel
 
         private void LoadStructureAndDoWork(Action<string> function)
         {
-            LoadFrostbiteStructure();
-            if (!HasError)
+            try
             {
+                LoadFrostbiteStructure();
                 function(CompleteFilePath);
+            }
+            catch(Exception e)
+            {
+                HasError = true;
             }
         }
 

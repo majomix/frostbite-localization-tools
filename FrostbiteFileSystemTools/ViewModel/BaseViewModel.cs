@@ -91,7 +91,7 @@ namespace FrostbiteFileSystemTools.ViewModel
             }
             else
             {
-                HasError = true;
+                throw new ArgumentException();
             }
         }
     }
