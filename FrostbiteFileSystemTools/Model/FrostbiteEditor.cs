@@ -69,9 +69,10 @@ namespace FrostbiteFileSystemTools.Model
             bool isIndirect = myTableOfContents.Payload.BundleCollections.Where(bundleList => bundleList.Bundles.Count() > 0).First().Bundles.First().Indirection != null;
             
             List<bool> isIndirectionConsistentAndMatching = myTableOfContents.Payload.BundleCollections.Select(bundleList => bundleList.Bundles.All(bundle => (bundle.Indirection != null) == isIndirect)).Distinct().ToList();
+            bool isIndirectOrMixed = false;
             if (isIndirectionConsistentAndMatching.Count() != 1 || !isIndirectionConsistentAndMatching.First())
             {
-                throw new ArgumentException("Mixed indirection bundles are not supported.");
+                isIndirectOrMixed = true;
             }
 
             string originalSuperBundlePath = Path.ChangeExtension(tableOfContentsName, "sb");
@@ -123,10 +124,11 @@ namespace FrostbiteFileSystemTools.Model
             {
                 IEnumerable<SuperBundle> modifiedBundles;
 
-                if (isIndirect)
+                if (isIndirectOrMixed)
                 {
                     modifiedBundles = myTableOfContents.Payload.BundleCollections
                     .SelectMany(bundleList => bundleList.Bundles
+                        .Where(superBundles => superBundles.Indirection != null)
                         .SelectMany(superBundles => superBundles.Indirection.BundleCollections
                             .SelectMany(indirectBundleList => indirectBundleList.Bundles)))
                             .Where(bundle => bundle.Changed != null);
@@ -178,7 +180,7 @@ namespace FrostbiteFileSystemTools.Model
                 }
 
                 // write superbundle
-                if(isIndirect)
+                if (isIndirectOrMixed)
                 {
                     filesToOverwriteMap.Add(originalSuperBundlePath, newSuperBundlePath);
 
