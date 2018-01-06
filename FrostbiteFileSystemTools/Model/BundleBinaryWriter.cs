@@ -24,6 +24,8 @@ namespace FrostbiteFileSystemTools.Model
 
         public void Write(FrostbiteHeader header)
         {
+            if (header == null) return;
+
             Write(header.Signature);
             Write(header.Version);
             Write((Int32)0);
@@ -112,17 +114,28 @@ namespace FrostbiteFileSystemTools.Model
             Write((byte)0);
         }
 
-        public void Write(Catalogue catalogue)
+        public void Write(byte version, Catalogue catalogue)
         {
-            Write(catalogue.Header);
+            if(version == 0x01)
+            {
+                Write(catalogue.Header);
+            }
+            
             Write(Encoding.ASCII.GetBytes(catalogue.Signature));
-            Write(catalogue.NumberOfFiles);
-            Write(catalogue.NumberOfHashes);
-            Write(catalogue.Extra);
+
+            if (version == 0x01)
+            {
+                Write(catalogue.NumberOfFiles);
+                Write(catalogue.NumberOfHashes);
+                if(catalogue.Extra != null)
+                {
+                    Write(catalogue.Extra);
+                }
+            }
 
             foreach(var entry in catalogue.Files)
             {
-                Write(entry);
+                Write(version, entry);
             }
 
             foreach(byte[] hash in catalogue.Hashes)
@@ -131,12 +144,15 @@ namespace FrostbiteFileSystemTools.Model
             }
         }
 
-        public void Write(KeyValuePair<byte[], CatalogueEntry> entry)
+        public void Write(byte version, KeyValuePair<byte[], CatalogueEntry> entry)
         {
             Write(entry.Key);
             Write(entry.Value.Offset);
             Write(entry.Value.Size);
-            Write(entry.Value.Extra);
+            if(version == 0x01)
+            {
+                Write(entry.Value.Extra);
+            }
             Write(entry.Value.Archive);
         }
     }

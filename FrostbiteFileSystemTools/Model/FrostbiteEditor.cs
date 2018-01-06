@@ -175,7 +175,7 @@ namespace FrostbiteFileSystemTools.Model
 
                     using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(newCataloguePath, FileMode.Create)))
                     {
-                        writer.Write(catalogue);
+                        writer.Write(myTableOfContents.Header.Version, catalogue);
                     }
                 }
 
