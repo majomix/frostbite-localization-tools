@@ -7,7 +7,7 @@ namespace FrostbiteFileSystemTools.ViewModel
 {
     internal abstract class BaseViewModel : INotifyPropertyChanged
     {
-        private int myCurrentProgress;
+        private int myCurrentProgress = 100;
         private string myLoadedFilePath;
         private string myExeDirectoryPath;
         private bool myHasError;
