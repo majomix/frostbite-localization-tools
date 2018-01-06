@@ -89,8 +89,6 @@ namespace FrostbiteFileSystemTools.Model
                 {
                     using (BundleBinaryWriter writer = new BundleBinaryWriter(File.Open(newSuperBundlePath, FileMode.Create)))
                     {
-                        filesToOverwriteMap.Add(originalSuperBundlePath, newSuperBundlePath);
-
                         foreach (SuperBundle superBundle in allBundles)
                         {
                             Int64 initialFilePosition = writer.BaseStream.Position;

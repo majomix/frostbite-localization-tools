@@ -12,8 +12,6 @@ namespace FrostbiteFileSystemTools.Model
         private readonly string allowedSignature = @"NyanNyanNyanNyan";
 
         private string mySignature;
-        private Dictionary<byte[], CatalogueEntry> dictionary;
-        private List<byte[]> hashes;
 
         public Catalogue(string path, Dictionary<byte[], CatalogueEntry> dictionary, List<byte[]> hashes)
         {
