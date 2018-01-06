@@ -205,7 +205,7 @@ namespace FrostbiteFileSystemTools.Model
             CleanupTemporaryFiles(filesToOverwriteMap);
         }
 
-        public void LoadStructureFromToc(string tableOfContentsName, int maximumParentDirectories)
+        public void LoadStructureFromToc(string tableOfContentsName, string rootDirectory)
         {
             using (BundleBinaryReader tocReader = new BundleBinaryReader(File.Open(tableOfContentsName, FileMode.Open)))
             {
@@ -236,8 +236,7 @@ namespace FrostbiteFileSystemTools.Model
                     }
                 }
 
-                string directory = Path.GetDirectoryName(tableOfContentsName) + string.Concat(Enumerable.Repeat(@"\..", maximumParentDirectories));
-                FileInfo[] catalogueFiles = new DirectoryInfo(directory).GetFiles("*.cat", SearchOption.AllDirectories);
+                FileInfo[] catalogueFiles = new DirectoryInfo(rootDirectory).GetFiles("*.cat", SearchOption.AllDirectories);
 
                 List<Catalogue> currentCatalogues = new List<Catalogue>();
                 foreach (var file in catalogueFiles)

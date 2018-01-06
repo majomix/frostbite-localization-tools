@@ -26,20 +26,12 @@ namespace FrostbiteFileSystemTools.ViewModel
 
         public void Extract()
         {
-            if (LoadedFilePath != null)
-            {
-                LoadFrostbiteStructure();
-                Model.ExtractFiles(LoadedFilePath);
-            }
+            LoadStructureAndDoWork(Model.ExtractFiles);
         }
 
         public void Import()
         {
-            if (LoadedFilePath != null)
-            {
-                LoadFrostbiteStructure();
-                Model.ImportFiles(LoadedFilePath);
-            }
+            LoadStructureAndDoWork(Model.ImportFiles);
         }
 
         public void ParseCommandLine()
@@ -47,11 +39,20 @@ namespace FrostbiteFileSystemTools.ViewModel
             OptionSet options = new OptionSet()
                 .Add("export", value => Export = true)
                 .Add("import", value => Export = false)
-                .Add("toc=", value => LoadedFilePath = CreateFullPath(value, true))
-                .Add("exedir=", value => ExeDirectoryPath = CreateFullPath(value, false))
+                .Add("toc=", value => LoadedFilePath = TrimPath(value))
+                .Add("exedir=", value => ExeDirectoryPath = CreateExeDirPath(value))
                 .Add("compression=", value => SetCompressionType(value));
 
             options.Parse(Environment.GetCommandLineArgs());
+        }
+
+        private void LoadStructureAndDoWork(Action<string> function)
+        {
+            LoadFrostbiteStructure();
+            if (!HasError)
+            {
+                function(CompleteFilePath);
+            }
         }
 
         private void SetCompressionType(string value)
@@ -68,29 +69,32 @@ namespace FrostbiteFileSystemTools.ViewModel
             }
         }
 
-        private string CreateFullPath(string path, bool checkForFileExistence)
+        private string CreateExeDirPath(string path)
         {
-            if (String.IsNullOrEmpty(path)) return null;
+            string finalPath = null;
 
-            if (path.Contains(':') && CheckForExistence(path, checkForFileExistence))
+            if (!String.IsNullOrEmpty(path))
             {
-                return path;
+                if (path.Contains(':') && Directory.Exists(path))
+                {
+                    finalPath = path;
+                }
+                else
+                {
+                    string resultPath = Directory.GetCurrentDirectory() + @"\" + path.Replace('/', '\\');
+                    if (Directory.Exists(path))
+                    {
+                        finalPath = resultPath;
+                    }
+                }
             }
-            else
-            {
-                string resultPath = Directory.GetCurrentDirectory() + @"\" + path.Replace('/', '\\');
-                if (CheckForExistence(resultPath, checkForFileExistence)) return resultPath;
-                else return null;
-            }
+
+            return TrimPath(finalPath);
         }
 
-        private bool CheckForExistence(string path, bool checkForFile)
+        private string TrimPath(string path)
         {
-            if (checkForFile)
-            {
-                return File.Exists(path);
-            }
-            return true;
+            return path.Trim('\\');
         }
     }
 }

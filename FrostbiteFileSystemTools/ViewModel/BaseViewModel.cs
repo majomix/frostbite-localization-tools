@@ -1,6 +1,7 @@
 ﻿using FrostbiteFileSystemTools.Model;
 using System;
 using System.ComponentModel;
+using System.IO;
 
 namespace FrostbiteFileSystemTools.ViewModel
 {
@@ -9,6 +10,7 @@ namespace FrostbiteFileSystemTools.ViewModel
         private int myCurrentProgress;
         private string myLoadedFilePath;
         private string myExeDirectoryPath;
+        private bool myHasError;
 
         public FrostbiteEditor Model { get; protected set; }
         public string LoadedFilePath
@@ -25,7 +27,7 @@ namespace FrostbiteFileSystemTools.ViewModel
         }
         public string ExeDirectoryPath
         {
-            get { return myExeDirectoryPath; }
+            get { return myExeDirectoryPath ?? Directory.GetCurrentDirectory(); }
             set
             {
                 if (myExeDirectoryPath != value)
@@ -47,7 +49,22 @@ namespace FrostbiteFileSystemTools.ViewModel
                 }
             }
         }
-
+        public bool HasError
+        {
+            get { return myHasError; }
+            set
+            {
+                if (myHasError != value)
+                {
+                    myHasError = value;
+                    OnPropertyChanged("HasError");
+                }
+            }
+        }
+        public string CompleteFilePath
+        {
+            get { return ExeDirectoryPath + @"\" + LoadedFilePath; }
+        }
         public event PropertyChangedEventHandler PropertyChanged;
         public event EventHandler RequestClose;
 
@@ -67,21 +84,15 @@ namespace FrostbiteFileSystemTools.ViewModel
 
         public void LoadFrostbiteStructure()
         {
-            Model.LoadStructureFromToc(LoadedFilePath, CalculateNumberOfFolders());
-            OnPropertyChanged("Model");
-        }
-
-        private int CalculateNumberOfFolders()
-        {
-            string pathDifference = LoadedFilePath.Split(new string[] { ExeDirectoryPath }, StringSplitOptions.RemoveEmptyEntries)[0];
-            int fullTocSlashes = LoadedFilePath.Split('\\').Length - 2;
-            int pathDifferenceSlahses = pathDifference.Split('\\').Length - 2;
-
-            if (pathDifferenceSlahses >= fullTocSlashes)
+            if(File.Exists(CompleteFilePath))
             {
-                throw new ArgumentException("Wrong path arguments.");
+                Model.LoadStructureFromToc(CompleteFilePath, ExeDirectoryPath);
+                OnPropertyChanged("Model");
             }
-            return pathDifferenceSlahses;
+            else
+            {
+                HasError = true;
+            }
         }
     }
 }
